@@ -1,149 +1,145 @@
-= Building an Application with rpms
+== Performance tuning for SQL Server
 
-== Downloading the UBI
+____
+*NOTE:* In this step we will be using the _cpudist_ terminal to run
+tools and commands to optimize SQL Server on Red Hat Enterprise Linux.
+____
 
-In this lab, you will be installing software into the container 
-image running as an interactive application. To do this you will
-need `yum`, but do not need `systemd` for managing services within the
-container environment.  For that reason, you will be using the *Standard*
-UBI image (as opposed to the Minimal or Multi-service images).
+Select the _cpudist_ terminal to run commands in this step.
 
-Using the "buildah from" command will download and meld the container image. This particular image we are using is the Red Hat Universal Base Image or UBI. From the ourput of the command, you will notice that we are pulling down the latest one, which is for RHEL 9. 
+=== RHEL tuned profiles
 
-. Execute the  download the Standard UBI
-image from Red Hat's registry.
+The tuned tuning service can adapt the operating system to perform
+better under certain workloads by setting a tuning profile. The
+`+tuned-adm+` command-line tool allows users to switch between different
+tuning profiles.
 
-+
-[source,sh,role=execute]
-----
-buildah from registry.access.redhat.com/ubi9/ubi
-----
+First, check the currently active tuned profile :
 
-[#repositories]
-== Installing Repositories
-In this lab, you are going to containerize a software package that is already
-packaged in RPM format and stored in the Extra Packages for Enterprise Linux
-(EPEL) repository.
+....
+tuned-adm active
+....
 
-Software often has requirements for prerequisite software that must be installed
-on the machine for it to work properly.  `yum` will resolve those
-dependencies for you, as long as it can locate the required packages in
-repositories defined on the machine.  The Red Hat Universal Base Image (UBI)
-downloaded in the previous step has access to some Red Hat Enterprise Linux
-repositories.  However, the target package for the lab is from EPEL.  
+Current active profile: virtual-guest
 
-. In the command below, `buildah` is going to run a command on the
-`ubi-working-container` image.  The `--` indicates that the command should be
-executed from within the container, which means the results will be applied into
-the container image.  Lastly, you are providing the `yum` command to install a
-package that defines all of the repositories from EPEL, `epel-release-latest-9`.
+....
 
-+
-[source,bash]
-----
-buildah run ubi-working-container -- yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
-----
+Tuned is enabled by default and auto selects a suitable profile. Since this machine is a VM, tuned selects the virtual-guest profile.
 
+List all the tuned profiles that can be set:
+....
 
-. You can verify that the above command did not install the RPM on the host system.
+tuned-adm list
 
-+
-[source,bash]
-----
-rpm -q epel-release
-----
+....
 
-NOTE: If your repository configurations are not distributed as an RPM, but instead as
-individual `.repo` files, you could use the `buildah copy` command to copy
-files from the host operating system into the container image.  You will see
-an example of using `buildah copy` later in this lab.
+<pre class="file">
+Available profiles:
+- balanced                    - General non-specialized tuned profile
+- desktop                     - Optimize for the desktop use-case
+- hpc-compute                 - Optimize for HPC compute workloads
+- latency-performance         - Optimize for deterministic performance at the cost of increased power consumption
+- network-latency             - Optimize for deterministic performance at the cost of increased power consumption, focused on low latency network performance
+- network-throughput          - Optimize for streaming network throughput, generally only necessary on older CPUs or 40G+ networks
+- powersave                   - Optimize for low power consumption
+- throughput-performance      - Broadly applicable tuning that provides excellent performance across a variety of common server workloads
+- virtual-guest               - Optimize for running inside a virtual guest
+- virtual-host                - Optimize for running KVM guests
+....
 
-[#software]
-== Installing Software
+RHEL has a tuned profile for Microsoft SQL Server called _mssql_.
+However, this profile is not available since we haven’t installed this
+profile yet. To learn more about the tuned profiles listed above check
+https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/monitoring_and_managing_system_status_and_performance/getting-started-with-tuned_monitoring-and-managing-system-status-and-performance#tuned-profiles-distributed-with-rhel_getting-started-with-tuned[Monitoring
+and managing system status and performance]
 
+Next, let’s install the mssql tuned profile:
 
-. Now that the yum repositories are defined within the container, execute 
-another `yum install`, within the container, to install the target
-software: `moon-buggy`.
+....
+yum install -y tuned-profiles-mssql
+....
 
-+
-[source,bash]
-----
-buildah run ubi-working-container -- yum -y install moon-buggy
-----
+Again, list all the tuned profiles that can be set and notice that you
+have the mssql profile now available:
 
+....
+tuned-adm list
+....
 
-== Committing the Container Image
+<< OUTPUT ABRIDGED >>
 
-. At this point, the container is configured.  It is time to transition from a
-working container into a committed image.  In the command below, you will use
-the `buildah` command to commit the working container to an image called:
-`moon-buggy`.
+* latency-performance - Optimize for deterministic performance at the
+cost of increased power consumption
+* mssql - Optimize for MS SQL Server
+* network-latency - Optimize for deterministic performance at the cost
+of increased power consumption, focused on low latency network
+performance
 
-+
-[source,bash]
-----
-buildah commit ubi-working-container moon-buggy
-----
+<< OUTPUT ABRIDGED >>
 
-+
-. The output of `podman image list` should confirm the image was created.
+....
 
-+
-[source,bash]
-----
-podman image list
-----
+Now, let's view the contents of the installed mssql tuned profile.
+....
 
+cat /usr/lib/tuned/mssql/tuned.conf
 
-== Deploy the Container
+....
 
-Now the software has been installed and a new container image created.  It is
-time to spawn a runtime of the container image and validate the software.  The
-software we are using is a command line command.  
+<pre class="file">
+<< OUTPUT ABRIDGED >>
+...
+[main]
+summary=Optimize for MS SQL Server
+include=throughput-performance
 
-. When you `run` the container,
-it will be in interactive (`-it`) mode, based on the `moon-buggy` container
-image and the command run interactively will be `/usr/bin/moon-buggy`.
+[vm]
+transparent_hugepage.defrag=always
 
-+
-[source,bash]
-----
-podman run -it moon-buggy /usr/bin/moon-buggy
-----
+[sysctl]
+vm.max_map_count=800000
+kernel.numa_balancing=0
+kernel.sched_latency_ns=60000000
+kernel.sched_min_granularity_ns=15000000
+kernel.sched_wakeup_granularity_ns=2000000
+..
+<< OUTPUT ABRIDGED >>
+....
 
-+
-[source,textinfo]
-----
+The mssql tuned profile includes the througput-performance profile, and
+additionally tunes several other resources including the kernel CPU
+scheduler, transparent huge pages, and max virtual memory page count.
 
-<<< OUTPUT ABRIDGED >>>
-               MM     MM   OOOOO    OOOOO   NN     N
-               M M   M M  O     O  O     O  N N    N
-               M  M M  M  O     O  O     O  N  N   N
-               M   M   M  O     O  O     O  N   N  N
-               M       M  O     O  O     O  N    N N
-               M       M   OOOOO    OOOOO   N     NN
+By increasing the CPU scheduling granularity, it allows the kernel to
+more often evaluate whether a running job should be switched for another
+process. This allows the SQL Server processes to be consistently
+scheduled when they require CPU time, thus increasing the performance of
+the database application.
 
-                     BBBBBB   U     U   GGGGG    GGGGG   Y     Y
-                     B     B  U     U  G     G  G     G   Y   Y
-                     BBBBBB   U     U  G        G          Y Y
-                     B     B  U     U  G   GGG  G   GGG     Y
-                     B     B  U     U  G     G  G     G    Y
-                     BBBBBB    UUUUU    GGGGG    GGGGG   YY
+Check out `+man tuned-adm+` if you are interested in more details about
+the `+tuned-adm+` tool.
 
-<<< OUTPUT ABRIDGED >>>
-----
+=== Monitoring performance using bcc-tools
 
-. You can now play the Moon Buggy game, which is a text-based version of the
-popular Moon Patrol.  When you are finished, use the `q` command to quit the
-game, which will terminate the container.
+BCC is a toolkit for creating efficient kernel tracing and manipulation
+programs, and includes several useful tools and examples.
 
-+
-Alternatively, you can use `podman` to kill the running container from
-*Terminal 2*.
+Install the kernel-devel package for your currently running kernel and
+the bcc-tools packages.
 
-+
-[source,bash]
-----
-podman kill $(podman ps | grep -v CONTAINER | cut -f1 -d" " )
-----
+....
+yum install -y kernel-devel-$(uname -r) bcc-tools
+....
+
+____
+*NOTE:* In the command above, we embed the uname -r command to
+automatically determine, and embed, the version of the currently running
+kernel.
+____
+
+To learn more about the bcc-tools in Red Hat Enterprise Linux, check
+https://lab.redhat.com/ebpf-tracing[Performance observability in
+practice with bcc-tools]
+
+We will use the `+cpudist+` bcc-tool to monitor SQL Server performance
+in a later step.

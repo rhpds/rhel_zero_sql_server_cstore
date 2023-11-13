@@ -1,51 +1,51 @@
-= {lab_name}
+== Validate the SQL Environment
 
-The `lab_name` var, known as an asciidoc attribute, above was set in `./content/antora.yml` and can be used to set the lab_name or title of your content.
-You are both free to change its value and if you prefer to use a different var name, you can change the value of `lab_name`, for example to `title` in `./content/antora.yml` and then reference it in your content as `\{title}`.
-me
+____
+*Note:* For this scenario, we have started installing SQL Server in the
+background. The background task will take between 2-5 minutes to
+complete.
+____
 
-== Variables
+We have setup two terminal windows running on the local machine - The
+current terminal will be used for SQL Server and OS specific commands.
+The _cpudist_ terminal will be used for performance tracking using the
+cpudist bcc-tool explained later.
 
-Other vars can also be set there, such as `ssh_user` and `ssh_password`, and referenced inline in the lab content by using the `\{foo}` syntax.
+To check if ansible installation is complete, we can use the following
+command -
 
-This is another var, or asciidoc attribute, from `./content/antora.yml` {my_var}
+....
+systemctl status mssql-server.service --no-pager
+....
 
-== Writing your lab
+<< OUTPUT ABRIDGED >>
 
-Whatever type of content you are writing we'll refer to your *content* as "your lab" in this document.
+Active: active (running) since Monday 2019-07-15 19:24:18 EDT; 3h 59min
+left
 
-=== Lab structure
+<< OUTPUT ABRIDGED >>
 
+....
 
-Wether you are writing a lab
+Verify that the Active status is __active (running)__.
 
-* First, we will build a monolithic application already compiled as RPM packages and put it into a container. This will allow us to deploy the application, copy it between machines, and update it separately from the operating system. This process affords us a portable and easily maintained component instead of tightly coupling the application with your operating system maintenance.
+Finally, verify that you can connect to SQL Server
+....
 
-* In closing we will build a second container on a different operating system version that makes an application not packaged into RPMs. This will be similar to a web application deployment, positioning the correct files at the right locations. To do this, we will pull a project from GitHub and position the component files within our container image. The purpose of this is to achieve a portable application container that can deploy on several different versions of Red Hat Enterprise Linux. This also provides the benefit of decoupling your application maintenance, which would all happen by building new containers versus operating system maintenance. The container is no longer reliant on the operating system installed on the machine where the application is deployed.
+/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P Redhat1! -Q "`select
+@@version`"
 
+....
 
-. Now let's examine this cluster a bit more by describing the cluster (the `$GUID` environment variable is already set for you so you can immediately describe your individual cluster):
-+
-[source,sh,role=execute]
-----
-podman ps
-----
-+
-.Sample Output
-[source,texinfo,subs="attributes"]
-----
-CONTAINER ID  IMAGE                        COMMAND           CREATED      STATUS      PORTS                 NAMES
-2dcfee9e50c4  docker.io/library/httpd:2.4  httpd-foreground  3 hours ago  Up 3 hours  0.0.0.0:8080->80/tcp  showroom-httpd
-----
+<pre class="file">
+Microsoft SQL Server 2019 (RTM-CU8) (KB4577194) - 15.0.4073.23 (X64)
+        Sep 23 2020 16:03:08
+        Copyright (C) 2019 Microsoft Corporation
+        Enterprise Evaluation Edition (64-bit) on Linux (Red Hat Enterprise Linux 8.6) <X64>
 
+(1 rows affected)
+....
 
-
-
-
-
-
-
-=== Lab Access
-
-The terminal window to your right is *already* logged into the lab environment as the `{ssh_user}` user via `ssh`. 
-All steps of this lab are to be completed as the `{ssh_user}` user.
+By the above output, we have confirmed that we can connect to SQL
+Server, and confirm that we are running SQL Server 2019 on Red Hat
+Enterprise Linux 8.6
